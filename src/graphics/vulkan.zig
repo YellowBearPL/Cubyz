@@ -145,6 +145,8 @@ pub var device: c.VkDevice = undefined;
 var graphicsQueue: c.VkQueue = undefined;
 var presentQueue: c.VkQueue = undefined;
 
+pub var vkCmdPushDescriptorSetKHR: c.PFN_vkCmdPushDescriptorSetKHR = null;
+
 pub var version: packed struct(u32) {
 	patch: u12,
 	minor: u10,
@@ -183,6 +185,8 @@ pub fn init(window: ?*c.GLFWwindow) !void {
 		if (c.gladLoaderLoadVulkan(instance, physicalDevice, device) == 0) {
 			@panic("GLAD failed to load Vulkan functions");
 		}
+	} else {
+		vkCmdPushDescriptorSetKHR = @ptrCast(c.vkGetDeviceProcAddr(device, "vkCmdPushDescriptorSetKHR"));
 	}
 	command_pool.init();
 	SwapChain.init();
@@ -845,18 +849,51 @@ pub const Buffer = struct {
 	}
 };
 
+const macos_glad_shim_functions = [_][]const u8{
+	"vkAllocateMemory",                    "vkBindBufferMemory",
+	"vkBindBufferMemory2",                 "vkBindImageMemory",
+	"vkBindImageMemory2",                  "vkCmdCopyBuffer",
+	"vkCreateBuffer",                      "vkCreateImage",
+	"vkDestroyBuffer",                     "vkDestroyImage",
+	"vkFlushMappedMemoryRanges",           "vkFreeMemory",
+	"vkGetBufferMemoryRequirements",       "vkGetBufferMemoryRequirements2",
+	"vkGetDeviceBufferMemoryRequirements", "vkGetDeviceImageMemoryRequirements",
+	"vkGetDeviceProcAddr",                 "vkGetImageMemoryRequirements",
+	"vkGetImageMemoryRequirements2",       "vkGetInstanceProcAddr",
+	"vkGetPhysicalDeviceMemoryProperties", "vkGetPhysicalDeviceMemoryProperties2",
+	"vkGetPhysicalDeviceProperties",       "vkGetPhysicalDeviceProperties2",
+	"vkInvalidateMappedMemoryRanges",      "vkMapMemory",
+	"vkUnmapMemory",
+};
+
+comptime {
+	if (builtin.target.os.tag == .macos) {
+		for (macos_glad_shim_functions) |name| {
+			const Storage = struct {
+				var value: @field(c, "PFN_" ++ name) = @field(c, name);
+			};
+			@export(&Storage.value, .{.name = "glad_" ++ name});
+		}
+	}
+}
+
 pub const gpu_allocator = struct {
 	var handle: c.VmaAllocator = undefined;
 
 	fn init() void {
-		const vkFunctions: c.VmaVulkanFunctions = if (builtin.target.os.tag == .macos) .{
-			.vkGetInstanceProcAddr = c.vkGetInstanceProcAddr,
-			.vkGetDeviceProcAddr = c.vkGetDeviceProcAddr,
-			.vkCreateImage = c.vkCreateImage,
-		} else .{
-			.glad_vkGetInstanceProcAddr = c.glad_vkGetInstanceProcAddr,
-			.glad_vkGetDeviceProcAddr = c.glad_vkGetDeviceProcAddr,
-			.glad_vkCreateImage = c.glad_vkCreateImage,
+		const vkFunctions: c.VmaVulkanFunctions = blk: {
+			if (builtin.target.os.tag == .macos) {
+				break :blk .{
+					.vkGetInstanceProcAddr = c.vkGetInstanceProcAddr,
+					.vkGetDeviceProcAddr = c.vkGetDeviceProcAddr,
+					.vkCreateImage = c.vkCreateImage,
+				};
+			}
+			break :blk .{
+				.glad_vkGetInstanceProcAddr = c.glad_vkGetInstanceProcAddr,
+				.glad_vkGetDeviceProcAddr = c.glad_vkGetDeviceProcAddr,
+				.glad_vkCreateImage = c.glad_vkCreateImage,
+			};
 		};
 		const allocatorCreateInfo: c.VmaAllocatorCreateInfo = .{
 			.flags = 0,
