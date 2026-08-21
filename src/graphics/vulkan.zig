@@ -849,7 +849,11 @@ pub const gpu_allocator = struct {
 	var handle: c.VmaAllocator = undefined;
 
 	fn init() void {
-		const vkFunctions: c.VmaVulkanFunctions = .{
+		const vkFunctions: c.VmaVulkanFunctions = if (builtin.target.os.tag == .macos) .{
+			.vkGetInstanceProcAddr = c.vkGetInstanceProcAddr,
+			.vkGetDeviceProcAddr = c.vkGetDeviceProcAddr,
+			.vkCreateImage = c.vkCreateImage,
+		} else .{
 			.glad_vkGetInstanceProcAddr = c.glad_vkGetInstanceProcAddr,
 			.glad_vkGetDeviceProcAddr = c.glad_vkGetDeviceProcAddr,
 			.glad_vkCreateImage = c.glad_vkCreateImage,
