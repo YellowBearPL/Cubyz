@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const main = @import("main");
 const vulkan = main.graphics.vulkan;
@@ -229,7 +230,11 @@ pub fn bindDescriptors(self: CommandBuffer, pipeline: main.graphics.Pipeline, bi
 			},
 		}
 	}
-	c.vkCmdPushDescriptorSetKHR(self.handle, @intFromEnum(bindPoint), pipeline.pipelineLayout, set, @intCast(writeInfo.len), writeInfo.ptr);
+	if (builtin.target.os.tag == .macos) {
+		vulkan.vkCmdPushDescriptorSetKHR.?(self.handle, @intFromEnum(bindPoint), pipeline.pipelineLayout, set, @intCast(writeInfo.len), writeInfo.ptr);
+	} else {
+		c.vkCmdPushDescriptorSetKHR(self.handle, @intFromEnum(bindPoint), pipeline.pipelineLayout, set, @intCast(writeInfo.len), writeInfo.ptr);
+	}
 }
 
 pub fn pushConstants(self: CommandBuffer, pipeline: main.graphics.Pipeline, constants: anytype) void {
